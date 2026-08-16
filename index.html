@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escáner QR</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 15px; background: #f0f2f5; margin: 0; }
+    .card { background: white; max-width: 380px; margin: 20px auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    input { width: 90%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; width: 100%; margin-top: 10px; cursor: pointer; }
+    #reader { width: 100%; margin-top: 15px; }
+    .hidden { display: none; }
+    #msg { margin-top: 15px; font-weight: bold; font-size: 16px; padding: 10px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+
+  <div class="card" id="login-card">
+    <h2>Control de Acceso</h2>
+    <input type="text" id="userInput" placeholder="Usuario">
+    <input type="password" id="passInput" placeholder="Contraseña">
+    <button onclick="login()">Ingresar</button>
+  </div>
+
+  <div class="card hidden" id="scanner-card">
+    <h3>Escáner de Salón</h3>
+    <p>Usuario: <b id="userDisplay"></b></p>
+    <div id="reader"></div>
+    <div id="msg"></div>
+    <button onclick="logout()" style="background:#dc3545;">Cerrar Sesión</button>
+  </div>
+
+  <script>
+    // REEMPLAZA LO QUE ESTÁ ENTRE COMILLAS CON TU URL DE APPS SCRIPT
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjKwKMHT7HYe5kFIEwe-oye2ElZneEccxUa95mITuyHl9yDddZJEGDr109j1PnU5hi/exec";
+    
+    let currentUser = "";
+    let html5QrcodeScanner;
+
+    async function login() {
+      const usuario = document.getElementById("userInput").value;
+      const password = document.getElementById("passInput").value;
+      if(!usuario || !password) return alert("Ingresa usuario y contraseña");
+
+      try {
+        const res = await fetch(SCRIPT_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: "login", usuario, password })
+        });
+        const data = await res.json();
+
+        if (data.status === "success") {
+          currentUser = usuario;
+          document.getElementById("userDisplay").innerText = currentUser;
+          document.getElementById("login-card").classList.add("hidden");
+          document.getElementById("scanner-card").classList.remove("hidden");
+          startScanner();
+        } else {
+          alert(data.message);
+        }
+      } catch (e) {
+        alert("Error de conexión. Revisa la URL de Apps Script.");
+      }
+    }
+
+    function startScanner() {
+      html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+      html5QrcodeScanner.render(onScanSuccess);
+    }
+
+    async function onScanSuccess(decodedText) {
+      const msgDiv = document.getElementById("msg");
+      html5QrcodeScanner.pause();
+      msgDiv.style.background = "#e2e3e5";
+      msgDiv.style.color = "#383d41";
+      msgDiv.innerText = "Procesando código...";
+
+      try {
+        const res = await fetch(SCRIPT_URL, {
+          method: "POST",
+          body: JSON.stringify({ action: "registrar", usuario: currentUser, codigo: decodedText })
+        });
+        const data = await res.json();
+
+        if (data.status === "success") {
+          if (data.type === "entrada") {
+            msgDiv.style.background = "#d4edda";
+            msgDiv.style.color = "#155724";
+          } else {
+            msgDiv.style.background = "#cce5ff";
+            msgDiv.style.color = "#004085";
+          }
+          msgDiv.innerText = data.message;
+        } else {
+          msgDiv.style.background = "#f8d7da";
+          msgDiv.style.color = "#721c24";
+          msgDiv.innerText = data.message;
+        }
+      } catch (error) {
+        msgDiv.style.background = "#f8d7da";
+        msgDiv.innerText = "Error registrando en Google Sheets";
+      }
+
+      setTimeout(() => html5QrcodeScanner.resume(), 3000);
+    }
+
+    function logout() { location.reload(); }
+  </script>
+</body>
+</html>
